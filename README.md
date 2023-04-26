@@ -1,7 +1,7 @@
 # BACnet/IP Device Simulator
 
 
-### About
+## About
 
 This is a prototype BACnet/IP device simulator designed to expose a
 BACnet/IP device as well as an HTTP server. This simulator enables
@@ -12,52 +12,110 @@ This prototype is aimed at making it easy to verify IO operations which
 take place on BACnet/IP device, typically from another such device such
 as an IoT Gateway or other BACnet/IP based controllers.
 
-
-### Stage of development
-
-This is an `alpha` and is under active development. There maybe breaking 
-changes introduced at this stage.
+This project is in `alpha`. There may be breaking changes introduced to the 
+interfaces.
 
 
-### Installation
+## Usage Instructions
 
-This project has been developed in Python3.
+To use the device simulator, you'll require either a Python3 virtual 
+environment, docker (preferred).
 
-* You'll require `docker` on your machine if you only intend to try/use
-* You'll require a Python3 virtual environment if you intend to develop/tinker
+The _Makefile_ provides handy commands to build a docker image, launch 
+containers, exec into these containers, teardown etc.
 
-Steps to deploy:
+For ease of use, three containers are launched from the make file (lets call 
+these `a`, `b` and `c`). The containers themselves are called `simdev-a`, 
+`simdev-b` and `simdev-c`.
 
-1. Clone this repo to a folder.
-1. Switch your current working directory to the root of this repo
-1. Run `make` to view a list of commands
+1. Run `make dc-build` to build the docker image from the root of this 
+repo. The image will be called `simdev`.
+1. Run `make dc-up`. This will launch all three containers `simdev-a`, 
+`simdev-b` and `simdev-c`.
+1. Run `make run-a`, `make run-b`, or `make run-c` to exec/shell into the 
+respective containers.
+1. Run `make dc-rm` to remove all containers. `make dc-rmi` to remove the image.
+
+The containers run _sleep infinity_ in their entrypoint as these commands 
+are meant for interactive exploration of the tool.
+
+### Demo
+
+To execute the `simdev` process, you should exec into one or more of the 
+containers and launch `sd` either as a server (using `sd serv`), or as a
+BACnet device with an interactive command line (using `sd cmd`).
+
+The image also has [httpie](https://httpie.io/), a user-friendy HTTP CLI 
+client. This can be used to make HTTP requests from any container to any 
+container running the simulator. The containers share the same default 
+network.
+
+### Address resolution
+
+The BACnet/IP stack requires information of both IPv4 address and CIDR. This 
+can be passed using the CLI arugment `sd serv -a <IPv4/CIDR>`. Example: if 
+your network mask is 255.255.255.0, and your IP address is 192.168.0.2, then 
+the CLI argument will have the value _192.168.0.2/24_.
+
+Another option is to invoke `sd serv -i <interface-name>`. When this is passed 
+simdev will automatically fetch the IPv2, netmask and calculate the IPv4/CIDR 
+for use by the BACnet device. This option is convenient in scenarios where 
+you know the name of the interface is known, or is same/similar across your 
+setup, while you IP addresses might vary from time to time.
+
+When neither is passed, simdev will attempt reading IPv4/CIDR from interface 
+`eth0` and `en0`. The `eth0` interface-name will be available on docker, hence 
+there's no need to pass these arguments in the `a|b|c` demo containers.
 
 
-#### Usage using Docker
+## Typical Usage Examples
 
-You can use the `make dc-*` commands to easily setup a docker image and 
-execute containers.
+The BACnet/IP simulator initialises itself with 5 points (BACnet Objects) of 
+type `AnalogOutput`. These are named `AO-0`, `AO-1`, through `AO-4`. The 
+initial _presentValue_ for the objects is 0.
 
-`make build`: Will build a `simdev` image with the simulator
+### Reading, writing values from another BACnet device
 
-`make dc-up`: Will bring up three containers named `simdev-a`, `simdev-b` and `simdev-c`
+In order to communicate with the simulated BACnet/IP device over BACnet, one 
+requires another BACnet device to do so. The two BACnet devices will 
+bind themselves to a commonly agreed port (BACnet default: 47808), but 
+require separate IPv4 addresses to bind to. Thus, in order to read, write one 
+needs to launch `sd cmd` from a different container.
 
-`make run-x`: Replace `x` with `a`, `b` or `c` to shell into the above containers
+The `cmd` is an interactive command interface which instructs its local 
+BACnet/IP device to send read/write instructions to the simulator's BACnet/IP 
+device.
 
-Once inside the container, run:
+### Command usage
 
-* `sd serv` to start the simulation server
-* `sd cmd` to start another BACnet server in CLI mode
+To read, write: you need to do the following.
+
+1. Run `set addr=<IPv4>`; where <IPv4> is the address of the target BACnet/IP 
+device you wish to talk to. Example: `set addr=192.168.0.2`. Once set, all 
+subsequent read, write commands will send packets to this device.
+1. Run `read <objId`>, or `write <objId> <value>` to read or write. Here, the 
+<objId> is `ao-0`, `ao-1`, .. `ao-4`. Note the `ao` in lower case when used in 
+commands.
 
 
-#### Development
+### HTTP Routes
 
-You must install Python3 and setup a virtual environment for development.
+* `GET /point/{objId}/value`: returns the presentValue of the object: Ex: objId could be `ao-0`
+* `PUT /point/{objId}/value/{value}`: write the supplied {value} as the presentValue. Real number expected
+* `GET /point/{objId}/logs`: returns the read+write logs for the point since it was last cleared
+* `DEL /point/{objId}/logs`: clears the I/O history for the objId
 
-Run `make install-all` to install all dependencies required for development.
 
-The above command also installs an entrypoint called `sd` (for simdev) through
-which the tool can be invoked.
+## Development Setup
+
+simdev has been developed in Python3. You'll require Python 3.11+ (preferred) 
+and preferably a virtualenv.
+
+To install dependencies and entrypoint, run `make install-all`
+
+Dependencies are defined in the `setup.cfg` file. The above command installs 
+the code from the current repo as an editable package (i.e `pip install -e .`). 
+This allows for code changes in simdev to reflect live.
 
 
 ### License
